@@ -1,0 +1,539 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in
+# the Software without restriction, including without limitation the rights to
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+# the Software, and to permit persons to whom the Software is furnished to do so.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+# FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Region-scoped CloudWatch telemetry (logs and traces) enablement for Bedrock AgentCore resources (uksb-f3mc6zjkan).
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Resource types to enable
+        Parameters:
+          - EnableRuntimeTelemetry
+          - EnableBrowserTelemetry
+          - EnableCodeInterpreterTelemetry
+          - EnableGatewayTelemetry
+          - EnableMemoryTelemetry
+          - EnableWorkloadIdentityTelemetry
+
+Parameters:
+  EnableRuntimeTelemetry:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Create logging and tracing telemetry rules for Bedrock AgentCore Runtime resources.
+  EnableBrowserTelemetry:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Create logging and tracing telemetry rules for Bedrock AgentCore Browser resources.
+  EnableCodeInterpreterTelemetry:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Create logging and tracing telemetry rules for Bedrock AgentCore CodeInterpreter resources.
+  EnableGatewayTelemetry:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Create logging and tracing telemetry rules for Bedrock AgentCore Gateway resources.
+  EnableMemoryTelemetry:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Create logging and tracing telemetry rules for Bedrock AgentCore Memory resources.
+  EnableWorkloadIdentityTelemetry:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Create logging and tracing telemetry rules for Bedrock AgentCore WorkloadIdentity resources.
+
+Conditions:
+  RuntimeEnabled: !Equals [!Ref EnableRuntimeTelemetry, "true"]
+  BrowserEnabled: !Equals [!Ref EnableBrowserTelemetry, "true"]
+  CodeInterpreterEnabled: !Equals [!Ref EnableCodeInterpreterTelemetry, "true"]
+  GatewayEnabled: !Equals [!Ref EnableGatewayTelemetry, "true"]
+  MemoryEnabled: !Equals [!Ref EnableMemoryTelemetry, "true"]
+  WorkloadIdentityEnabled: !Equals [!Ref EnableWorkloadIdentityTelemetry, "true"]
+  AnyTelemetryEnabled: !Or
+    - !Condition RuntimeEnabled
+    - !Condition BrowserEnabled
+    - !Condition CodeInterpreterEnabled
+    - !Condition GatewayEnabled
+    - !Condition MemoryEnabled
+    - !Condition WorkloadIdentityEnabled
+
+Resources:
+  TelemetryRuleRuntimeApplicationLogs:
+    Type: AWS::ObservabilityAdmin::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: RuntimeEnabled
+    Properties:
+      RuleName: agentcore-runtime-application-logs
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::Runtime
+        TelemetryType: Logs
+        Regions:
+          - !Ref "AWS::Region"
+        DestinationConfiguration:
+          DestinationType: cloud-watch-logs
+          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
+          LogDeliveryParameters:
+            LogTypes:
+              - APPLICATION_LOGS
+
+  TelemetryRuleRuntimeUsageLogs:
+    Type: AWS::ObservabilityAdmin::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: RuntimeEnabled
+    Properties:
+      RuleName: agentcore-runtime-usage-logs
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::Runtime
+        TelemetryType: Logs
+        Regions:
+          - !Ref "AWS::Region"
+        DestinationConfiguration:
+          DestinationType: cloud-watch-logs
+          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
+          LogDeliveryParameters:
+            LogTypes:
+              - USAGE_LOGS
+
+  TelemetryRuleRuntimeTraces:
+    Type: AWS::ObservabilityAdmin::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: RuntimeEnabled
+    Properties:
+      RuleName: agentcore-runtime-traces
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::Runtime
+        TelemetryType: Traces
+        Regions:
+          - !Ref "AWS::Region"
+
+
+  TelemetryRuleBrowserUsageLogs:
+    Type: AWS::ObservabilityAdmin::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: BrowserEnabled
+    Properties:
+      RuleName: agentcore-browser-usage-logs
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::Browser
+        TelemetryType: Logs
+        Regions:
+          - !Ref "AWS::Region"
+        DestinationConfiguration:
+          DestinationType: cloud-watch-logs
+          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
+          LogDeliveryParameters:
+            LogTypes:
+              - USAGE_LOGS
+
+  TelemetryRuleBrowserTraces:
+    Type: AWS::ObservabilityAdmin::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: BrowserEnabled
+    Properties:
+      RuleName: agentcore-browser-traces
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::Browser
+        TelemetryType: Traces
+        Regions:
+          - !Ref "AWS::Region"
+
+
+  TelemetryRuleCodeInterpreterUsageLogs:
+    Type: AWS::ObservabilityAdmin::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: CodeInterpreterEnabled
+    Properties:
+      RuleName: agentcore-codeinterpreter-usage-logs
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::CodeInterpreter
+        TelemetryType: Logs
+        Regions:
+          - !Ref "AWS::Region"
+        DestinationConfiguration:
+          DestinationType: cloud-watch-logs
+          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
+          LogDeliveryParameters:
+            LogTypes:
+              - USAGE_LOGS
+
+  TelemetryRuleCodeInterpreterTraces:
+    Type: AWS::ObservabilityAdmin::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: CodeInterpreterEnabled
+    Properties:
+      RuleName: agentcore-codeinterpreter-traces
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::CodeInterpreter
+        TelemetryType: Traces
+        Regions:
+          - !Ref "AWS::Region"
+
+
+  AgentCoreXRayResourcePolicy:
+    Type: AWS::XRay::ResourcePolicy
+    Condition: AnyTelemetryEnabled
+    Properties:
+      PolicyName: AWSLogDeliveryAgentCoreXRay
+      PolicyDocument: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "AWSLogDeliveryWriteMemory",
+              "Effect": "Allow",
+              "Principal": { "Service": "delivery.logs.amazonaws.com" },
+              "Action": "xray:PutTraceSegments",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": { "aws:SourceAccount": "${AWS::AccountId}" },
+                "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:memory/*" },
+                "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
+              }
+            },
+            {
+              "Sid": "AWSLogDeliveryWriteRuntime",
+              "Effect": "Allow",
+              "Principal": { "Service": "delivery.logs.amazonaws.com" },
+              "Action": "xray:PutTraceSegments",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": { "aws:SourceAccount": "${AWS::AccountId}" },
+                "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*" },
+                "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
+              }
+            },
+            {
+              "Sid": "AWSLogDeliveryWriteWorkloadIdentity",
+              "Effect": "Allow",
+              "Principal": { "Service": "delivery.logs.amazonaws.com" },
+              "Action": "xray:PutTraceSegments",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": { "aws:SourceAccount": "${AWS::AccountId}" },
+                "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/*" },
+                "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
+              }
+            },
+            {
+              "Sid": "AWSLogDeliveryWriteBrowser",
+              "Effect": "Allow",
+              "Principal": { "Service": "delivery.logs.amazonaws.com" },
+              "Action": "xray:PutTraceSegments",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": { "aws:SourceAccount": "${AWS::AccountId}" },
+                "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:aws:browser/*" },
+                "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
+              }
+            },
+            {
+              "Sid": "AWSLogDeliveryWriteCodeInterpreter",
+              "Effect": "Allow",
+              "Principal": { "Service": "delivery.logs.amazonaws.com" },
+              "Action": "xray:PutTraceSegments",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": { "aws:SourceAccount": "${AWS::AccountId}" },
+                "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:aws:code-interpreter/*" },
+                "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
+              }
+            },
+            {
+              "Sid": "AWSLogDeliveryWriteCodeInterpreterCustom",
+              "Effect": "Allow",
+              "Principal": { "Service": "delivery.logs.amazonaws.com" },
+              "Action": "xray:PutTraceSegments",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": { "aws:SourceAccount": "${AWS::AccountId}" },
+                "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:code-interpreter-custom/*" },
+                "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
+              }
+            },
+            {
+              "Sid": "AWSLogDeliveryWriteGateway",
+              "Effect": "Allow",
+              "Principal": { "Service": "delivery.logs.amazonaws.com" },
+              "Action": "xray:PutTraceSegments",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": { "aws:SourceAccount": "${AWS::AccountId}" },
+                "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:gateway/*" },
+                "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
+              }
+            }
+          ]
+        }
+
+
+  TelemetryRuleFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: agentcore-telemetry-rule-handler
+      Description: Custom-resource handler for AgentCore telemetry rules (Gateway, Memory, WorkloadIdentity)
+      Runtime: python3.13
+      Handler: index.handler
+      Timeout: 120
+      ReservedConcurrentExecutions: 5
+      Role: !GetAtt TelemetryRuleFunctionRole.Arn
+      Code:
+        ZipFile: |
+          # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+          """Custom resource handler for AgentCore telemetry enablement rules.
+
+          Creates, updates, and deletes CloudWatch ObservabilityAdmin telemetry
+          rules for Bedrock AgentCore resource types that are not yet supported
+          natively by CloudFormation (Gateway, Memory, WorkloadIdentity). The
+          handler runs in, and acts on, the region the stack is deployed to.
+
+          The cfnresponse module is injected automatically by AWS Lambda because
+          this code is embedded in the template through the ZipFile property.
+          """
+          import threading
+
+          import boto3
+          import cfnresponse
+          from botocore.exceptions import ClientError
+
+
+          def create_rule(client, rule_name, rule):
+              """Create the telemetry rule. Any error is treated as a failure."""
+              client.create_telemetry_rule(RuleName=rule_name, Rule=rule)
+
+
+          def delete_rule(client, rule_name):
+              """Delete the telemetry rule. A missing rule is success."""
+              try:
+                  client.delete_telemetry_rule(RuleIdentifier=rule_name)
+              except ClientError as error:
+                  if error.response["Error"]["Code"] != "ResourceNotFoundException":
+                      raise
+
+
+          def handler(event, context):
+              """Dispatch the CloudFormation custom resource request."""
+              properties = event.get("ResourceProperties", {})
+              rule_name = properties.get("RuleName")
+              physical_resource_id = rule_name or event.get("PhysicalResourceId", "none")
+              request_type = event["RequestType"]
+              finished = threading.Event()
+
+              def send_timeout_failure():
+                  """Signal FAILED just before the Lambda times out so the stack
+                  operation does not hang waiting on the custom resource."""
+                  if not finished.is_set():
+                      cfnresponse.send(event, context, cfnresponse.FAILED, {},
+                                       physical_resource_id,
+                                       reason="Function timed out")
+
+              seconds_remaining = context.get_remaining_time_in_millis() / 1000.0
+              timeout_guard = threading.Timer(max(seconds_remaining - 2, 1),
+                                              send_timeout_failure)
+              timeout_guard.start()
+
+              try:
+                  client = boto3.client("observabilityadmin")
+
+                  if request_type == "Create":
+                      create_rule(client, rule_name, properties["Rule"])
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {},
+                                       physical_resource_id)
+                  elif request_type == "Update":
+                      delete_rule(client, rule_name)
+                      create_rule(client, rule_name, properties["Rule"])
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {},
+                                       physical_resource_id)
+                  elif request_type == "Delete":
+                      # An already-deleted rule is treated as success in
+                      # delete_rule. Any other delete error propagates and is
+                      # signaled FAILED so the rule is not silently orphaned.
+                      # Note: this can leave the stack in DELETE_FAILED, which
+                      # requires a delete retry or manual cleanup.
+                      delete_rule(client, physical_resource_id)
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {},
+                                       physical_resource_id)
+                  else:
+                      cfnresponse.send(event, context, cfnresponse.FAILED, {},
+                                       physical_resource_id,
+                                       reason="Unknown RequestType " + request_type)
+              except Exception as error:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {},
+                                   physical_resource_id, reason=str(error)[:900])
+              finally:
+                  finished.set()
+                  timeout_guard.cancel()
+
+
+  TelemetryRuleFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: telemetry-rule-management
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: TelemetryRuleManage
+                Effect: Allow
+                Action:
+                  - observabilityadmin:CreateTelemetryRule
+                  - observabilityadmin:DeleteTelemetryRule
+                Resource:
+                  - !Sub arn:${AWS::Partition}:observabilityadmin:${AWS::Region}:${AWS::AccountId}:telemetry-rule/agentcore-gateway-*
+                  - !Sub arn:${AWS::Partition}:observabilityadmin:${AWS::Region}:${AWS::AccountId}:telemetry-rule/agentcore-memory-*
+                  - !Sub arn:${AWS::Partition}:observabilityadmin:${AWS::Region}:${AWS::AccountId}:telemetry-rule/agentcore-workloadidentity-*
+              - Sid: TelemetryCreatePreconditions
+                Effect: Allow
+                Action:
+                  - observabilityadmin:GetTelemetryEvaluationStatus
+                  - observabilityadmin:GetTelemetryRule
+                  - xray:GetTraceSegmentDestination
+                Resource: "*"
+              - Sid: CreateTelemetrySlr
+                Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    iam:AWSServiceName: telemetry-enablement.observabilityadmin.amazonaws.com
+              - Sid: OwnLogGroup
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/agentcore-telemetry-rule-handler:*
+
+
+  TelemetryRuleGatewayApplicationLogs:
+    Type: Custom::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: GatewayEnabled
+    Properties:
+      ServiceToken: !GetAtt TelemetryRuleFunction.Arn
+      RuleName: agentcore-gateway-application-logs
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::Gateway
+        TelemetryType: Logs
+        Regions:
+          - !Ref "AWS::Region"
+        DestinationConfiguration:
+          DestinationType: cloud-watch-logs
+          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
+          LogDeliveryParameters:
+            LogTypes:
+              - APPLICATION_LOGS
+
+  TelemetryRuleGatewayTraces:
+    Type: Custom::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: GatewayEnabled
+    Properties:
+      ServiceToken: !GetAtt TelemetryRuleFunction.Arn
+      RuleName: agentcore-gateway-traces
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::Gateway
+        TelemetryType: Traces
+        Regions:
+          - !Ref "AWS::Region"
+
+
+  TelemetryRuleMemoryApplicationLogs:
+    Type: Custom::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: MemoryEnabled
+    Properties:
+      ServiceToken: !GetAtt TelemetryRuleFunction.Arn
+      RuleName: agentcore-memory-application-logs
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::Memory
+        TelemetryType: Logs
+        Regions:
+          - !Ref "AWS::Region"
+        DestinationConfiguration:
+          DestinationType: cloud-watch-logs
+          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
+          LogDeliveryParameters:
+            LogTypes:
+              - APPLICATION_LOGS
+
+  TelemetryRuleMemoryTraces:
+    Type: Custom::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: MemoryEnabled
+    Properties:
+      ServiceToken: !GetAtt TelemetryRuleFunction.Arn
+      RuleName: agentcore-memory-traces
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::Memory
+        TelemetryType: Traces
+        Regions:
+          - !Ref "AWS::Region"
+
+
+  TelemetryRuleWorkloadIdentityApplicationLogs:
+    Type: Custom::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: WorkloadIdentityEnabled
+    Properties:
+      ServiceToken: !GetAtt TelemetryRuleFunction.Arn
+      RuleName: agentcore-workloadidentity-application-logs
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::WorkloadIdentity
+        TelemetryType: Logs
+        Regions:
+          - !Ref "AWS::Region"
+        DestinationConfiguration:
+          DestinationType: cloud-watch-logs
+          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
+          LogDeliveryParameters:
+            LogTypes:
+              - APPLICATION_LOGS
+
+  TelemetryRuleWorkloadIdentityTraces:
+    Type: Custom::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: WorkloadIdentityEnabled
+    Properties:
+      ServiceToken: !GetAtt TelemetryRuleFunction.Arn
+      RuleName: agentcore-workloadidentity-traces
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::WorkloadIdentity
+        TelemetryType: Traces
+        Regions:
+          - !Ref "AWS::Region"
+
+Outputs:
+  HandlerFunctionArn:
+    Description: ARN of the inline telemetry-rule custom-resource Lambda.
+    Value: !GetAtt TelemetryRuleFunction.Arn
+  ExecutionRoleArn:
+    Description: ARN of the least-privilege Lambda execution role.
+    Value: !GetAtt TelemetryRuleFunctionRole.Arn
+  XRayResourcePolicyName:
+    Condition: AnyTelemetryEnabled
+    Description: Name of the X-Ray resource policy authorizing AgentCore trace delivery.
+    Value: AWSLogDeliveryAgentCoreXRay
