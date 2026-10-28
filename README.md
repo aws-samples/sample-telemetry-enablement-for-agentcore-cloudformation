@@ -168,6 +168,85 @@ aws cloudformation validate-template --template-body file://bedrock-agentcore-te
 aws observabilityadmin list-telemetry-rules --region <your-region>
 ```
 
+## Teardown and cleanup
+
+Removing telemetry is not symmetric with enabling it. Deleting a telemetry rule,
+setting an `Enable*Telemetry` parameter to `false`, or deleting the whole stack
+stops new rule-driven enablement, but it does not remove the delivery
+configurations the rules already created, and it does not delete telemetry that
+has already been stored. Log groups, delivery sources, delivery destinations,
+and any log events already written remain in your account until you remove them.
+See the [DeleteTelemetryRule API reference](https://docs.aws.amazon.com/cloudwatch/latest/observabilityadmin/API_DeleteTelemetryRule.html)
+for the service behavior.
+
+Because of this, turning a resource type off does not stop data that is already
+flowing through an existing delivery configuration, and it does not delete data
+you have already collected. Plan the cleanup explicitly.
+
+### What a rule delete or a false parameter does and does not do
+
+- Does stop the rule from enabling telemetry on newly discovered resources.
+- Does not remove delivery sources or delivery destinations that were already
+  created for matched resources.
+- Does not delete log groups, stored log events, or stored traces.
+- Does not remove the `AWSLogDeliveryAgentCoreXRay` resource policy. That policy
+  is removed only when the whole stack is deleted, since it is a stack resource.
+  A rule delete or a `false` parameter leaves it in place.
+
+### Targeted cleanup
+
+Remove only what belongs to this stack and this account. Do not delete shared
+destinations that other workloads use. In particular the `aws/spans` log group
+is a shared trace destination and may receive traces from other AgentCore
+resources and other stacks, so leave it in place unless you have confirmed
+nothing else depends on it.
+
+1. List the delivery sources and confirm which ones this stack created, for
+   example names that match the AgentCore resource types you enabled.
+
+   ```bash
+   aws logs describe-delivery-sources --region <your-region>
+   aws logs describe-deliveries --region <your-region>
+   aws logs describe-delivery-destinations --region <your-region>
+   ```
+
+2. Delete only the deliveries, delivery sources, and dedicated delivery
+   destinations that this stack created, after confirming they are not shared.
+
+   ```bash
+   aws logs delete-delivery --id <delivery-id> --region <your-region>
+   aws logs delete-delivery-source --name <source-name> --region <your-region>
+   aws logs delete-delivery-destination --name <destination-name> --region <your-region>
+   ```
+
+3. Remove the per-resource application and usage log groups only if you no
+   longer need the stored telemetry. These follow the pattern
+   `/aws/bedrock-agentcore/<resourceId>/<logType>`. Confirm the contents first,
+   since deletion is permanent.
+
+   ```bash
+   aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/ --region <your-region>
+   ```
+
+4. Leave the shared `aws/spans` trace log group alone unless you have confirmed
+   it is used by nothing else.
+
+### Verify the cleanup
+
+Confirm the rules are gone and no unexpected delivery configuration remains.
+
+```bash
+aws observabilityadmin list-telemetry-rules --region <your-region>
+aws logs describe-delivery-sources --region <your-region>
+aws logs describe-delivery-destinations --region <your-region>
+```
+
+A note on stack deletion. The inline custom resource signals a failure if a
+rule delete does not succeed, which can leave the stack in `DELETE_FAILED`. If
+that happens, resolve the underlying delete error and retry the stack deletion,
+or remove the affected rule manually with
+`aws observabilityadmin delete-telemetry-rule`, then retry.
+
 ## Security
 
 This solution is provided as a proof-of-value and is not intended as a
