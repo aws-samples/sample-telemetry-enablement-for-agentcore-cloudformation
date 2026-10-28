@@ -66,6 +66,33 @@ so they are created through an inline Python Lambda that calls the
 (including a conflict with an existing rule) is reported as a failure so the
 stack surfaces it. On delete, a rule that is already gone is treated as success.
 
+### Payload logging and sensitive content
+
+Read this before enabling CodeInterpreter telemetry. CodeInterpreter
+`APPLICATION_LOGS` capture the full `request_payload` and `response_payload` of
+each `InvokeCodeInterpreter` call, which means the code sent to the interpreter
+and the output it returns are written to your log destination. Anything that
+appears in that code or output is logged, so treat these logs as potentially
+sensitive. Do not place credentials, secrets, tokens, keys, or other sensitive
+data in code that CodeInterpreter runs, because it will be captured in the logs.
+
+The telemetry rules created by this stack apply to all current and future
+CodeInterpreter resources in the account and region, so the payload capture
+takes effect for resources you have not created yet. This template only turns
+telemetry on. It does not redact or mask payloads and it does not configure the
+controls that protect the captured logs. You are responsible for evaluating and
+configuring the following for your log destination.
+
+- Who can read the logs, including log-group read access, subscription filters,
+  and export to Amazon S3 or Firehose.
+- How long the logs are retained.
+- How the logs are encrypted at rest, for example a customer-managed KMS key on
+  the destination log group.
+
+If the payload capture is not acceptable for a given resource type, set its
+`Enable*Telemetry` parameter to `false` before deploying, or deploy only the
+resource types you intend to log.
+
 ### Resources created
 
 - Native and custom telemetry rule resources for each enabled resource type
