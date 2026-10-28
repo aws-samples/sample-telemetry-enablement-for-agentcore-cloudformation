@@ -12,7 +12,7 @@ where it does not.
 ## Prerequisites
 
 - An AWS account with Bedrock AgentCore available in your target region.
-- AWS CLI v2 configured with credentials for that account and region.
+- AWS CLI v2 (2.36 or newer) configured with credentials for that account and region. Version 2.36+ includes the `observabilityadmin` telemetry rule operations this stack relies on. On earlier versions, those commands return an "invalid choice" error.
 - Permissions to deploy the stack, including creating an IAM role
   (`CAPABILITY_IAM`), a Lambda function, ObservabilityAdmin telemetry rules, and
   an X-Ray resource policy (`xray:PutResourcePolicy`).
@@ -21,6 +21,10 @@ where it does not.
 
 Enable the following in each region where you deploy this stack. These are
 account and region level settings and are not created by this template.
+
+- **Telemetry Evaluation** (required for the telemetry rule APIs). Enable once
+  per account: `aws observabilityadmin start-telemetry-evaluation --region <your-region>`.
+  Without it, rule operations fail with a `ValidationException`.
 
 - **CloudWatch Transaction Search** (required for traces). AgentCore trace
   delivery to X-Ray depends on Transaction Search being enabled; without it,
@@ -50,7 +54,7 @@ Two delivery paths are used, depending on CloudFormation schema support:
 |---|---|---|
 | Runtime | `AWS::ObservabilityAdmin::TelemetryRule` | Application logs, usage logs, traces |
 | Browser | `AWS::ObservabilityAdmin::TelemetryRule` | Usage logs, traces |
-| CodeInterpreter | `AWS::ObservabilityAdmin::TelemetryRule` | Usage logs, traces |
+| CodeInterpreter | `AWS::ObservabilityAdmin::TelemetryRule` | Application logs, usage logs, traces |
 | Gateway | `Custom::TelemetryRule` | Application logs, traces |
 | Memory | `Custom::TelemetryRule` | Application logs, traces |
 | WorkloadIdentity | `Custom::TelemetryRule` | Application logs, traces |
@@ -68,7 +72,7 @@ stack surfaces it. On delete, a rule that is already gone is treated as success.
   (scoped to the stack region).
 - `AgentCoreXRayResourcePolicy` - an `AWS::XRay::ResourcePolicy` that authorizes
   the log delivery service to write AgentCore traces to X-Ray in this region.
-  Created only when at least one resource type is enabled.
+  Created only when at least one resource type is enabled. Required for Browser and CodeInterpreter traces since their ARNs are AWS-owned and the service does not auto-create a policy for them. Do not remove it.
 - `TelemetryRuleFunction` - inline Python 3.13 Lambda (custom resource handler),
 - `TelemetryRuleFunctionRole` - IAM execution role for the Lambda.
 
