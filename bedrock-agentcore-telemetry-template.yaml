@@ -312,12 +312,21 @@ Resources:
                       raise
 
 
+          # Physical ID for a failed Create, so rollback never deletes an existing rule.
+          FAILED_CREATE_PREFIX = "create-failed-"
+
+
           def handler(event, context):
               """Dispatch the CloudFormation custom resource request."""
               properties = event.get("ResourceProperties", {})
               rule_name = properties.get("RuleName")
-              physical_resource_id = rule_name or event.get("PhysicalResourceId", "none")
               request_type = event["RequestType"]
+              if request_type == "Create":
+                  physical_resource_id = rule_name
+                  failure_resource_id = FAILED_CREATE_PREFIX + event["RequestId"]
+              else:
+                  physical_resource_id = event.get("PhysicalResourceId", rule_name or "none")
+                  failure_resource_id = physical_resource_id
               finished = threading.Event()
 
               def send_timeout_failure():
@@ -325,7 +334,7 @@ Resources:
                   operation does not hang waiting on the custom resource."""
                   if not finished.is_set():
                       cfnresponse.send(event, context, cfnresponse.FAILED, {},
-                                       physical_resource_id,
+                                       failure_resource_id,
                                        reason="Function timed out")
 
               seconds_remaining = context.get_remaining_time_in_millis() / 1000.0
@@ -346,6 +355,11 @@ Resources:
                       cfnresponse.send(event, context, cfnresponse.SUCCESS, {},
                                        physical_resource_id)
                   elif request_type == "Delete":
+                      if physical_resource_id.startswith(FAILED_CREATE_PREFIX):
+                          # This stack never created the rule, so there is nothing to delete.
+                          cfnresponse.send(event, context, cfnresponse.SUCCESS, {},
+                                           physical_resource_id)
+                          return
                       # An already-deleted rule is treated as success in
                       # delete_rule. Any other delete error propagates and is
                       # signaled FAILED so the rule is not silently orphaned.
@@ -356,11 +370,11 @@ Resources:
                                        physical_resource_id)
                   else:
                       cfnresponse.send(event, context, cfnresponse.FAILED, {},
-                                       physical_resource_id,
+                                       failure_resource_id,
                                        reason="Unknown RequestType " + request_type)
               except Exception as error:
                   cfnresponse.send(event, context, cfnresponse.FAILED, {},
-                                   physical_resource_id, reason=str(error)[:900])
+                                   failure_resource_id, reason=str(error)[:900])
               finally:
                   finished.set()
                   timeout_guard.cancel()
