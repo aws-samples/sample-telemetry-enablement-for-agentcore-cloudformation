@@ -268,8 +268,17 @@ Resources:
         }
 
 
+  TelemetryRuleFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: /aws/lambda/agentcore-telemetry-rule-handler
+      RetentionInDays: 30
+
   TelemetryRuleFunction:
     Type: AWS::Lambda::Function
+    DependsOn: TelemetryRuleFunctionLogGroup
     Properties:
       FunctionName: agentcore-telemetry-rule-handler
       Description: Custom-resource handler for AgentCore telemetry rules (Gateway, Memory, WorkloadIdentity)

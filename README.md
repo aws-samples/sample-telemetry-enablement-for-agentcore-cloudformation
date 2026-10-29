@@ -104,7 +104,11 @@ If payload capture is not acceptable for a resource type, set its
   the log delivery service to write AgentCore traces to X-Ray in this region.
   Created only when at least one resource type is enabled. Required for Browser and CodeInterpreter traces since their ARNs are AWS-owned and the service does not auto-create a policy for them. Do not remove it.
 - `TelemetryRuleFunction` - inline Python 3.13 Lambda (custom resource handler),
-- `TelemetryRuleFunctionRole` - IAM execution role for the Lambda.
+  fixed `FunctionName: agentcore-telemetry-rule-handler`.
+- `TelemetryRuleFunctionRole` - least-privilege IAM execution role for the Lambda.
+- `TelemetryRuleFunctionLogGroup` - the Lambda's log group,
+  `/aws/lambda/agentcore-telemetry-rule-handler`, with 30-day retention. It is
+  removed when you delete the stack.
 
 ## Architecture
 
