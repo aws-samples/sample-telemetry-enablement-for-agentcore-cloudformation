@@ -27,6 +27,7 @@ Metadata:
           - EnableGatewayTelemetry
           - EnableMemoryTelemetry
           - EnableWorkloadIdentityTelemetry
+          - EnablePaymentManagerTelemetry
 
 Parameters:
   EnableRuntimeTelemetry:
@@ -59,6 +60,11 @@ Parameters:
     AllowedValues: ["true", "false"]
     Default: "true"
     Description: Create logging and tracing telemetry rules for Bedrock AgentCore WorkloadIdentity resources.
+  EnablePaymentManagerTelemetry:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+    Description: Create logging and tracing telemetry rules for Bedrock AgentCore PaymentManager resources. Set to true only in Regions where AgentCore payments is available, otherwise the deployment fails.
 
 Conditions:
   RuntimeEnabled: !Equals [!Ref EnableRuntimeTelemetry, "true"]
@@ -67,6 +73,7 @@ Conditions:
   GatewayEnabled: !Equals [!Ref EnableGatewayTelemetry, "true"]
   MemoryEnabled: !Equals [!Ref EnableMemoryTelemetry, "true"]
   WorkloadIdentityEnabled: !Equals [!Ref EnableWorkloadIdentityTelemetry, "true"]
+  PaymentManagerEnabled: !Equals [!Ref EnablePaymentManagerTelemetry, "true"]
   AnyTelemetryEnabled: !Or
     - !Condition RuntimeEnabled
     - !Condition BrowserEnabled
@@ -74,6 +81,7 @@ Conditions:
     - !Condition GatewayEnabled
     - !Condition MemoryEnabled
     - !Condition WorkloadIdentityEnabled
+    - !Condition PaymentManagerEnabled
 
 Resources:
   TelemetryRuleRuntimeApplicationLogs:
@@ -263,6 +271,30 @@ Resources:
                 "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:gateway/*" },
                 "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
               }
+            },
+            {
+              "Sid": "AWSLogDeliveryWriteBrowserCustom",
+              "Effect": "Allow",
+              "Principal": { "Service": "delivery.logs.amazonaws.com" },
+              "Action": "xray:PutTraceSegments",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": { "aws:SourceAccount": "${AWS::AccountId}" },
+                "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:browser-custom/*" },
+                "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
+              }
+            },
+            {
+              "Sid": "AWSLogDeliveryWritePaymentManager",
+              "Effect": "Allow",
+              "Principal": { "Service": "delivery.logs.amazonaws.com" },
+              "Action": "xray:PutTraceSegments",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": { "aws:SourceAccount": "${AWS::AccountId}" },
+                "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:payment-manager/*" },
+                "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
+              }
             }
           ]
         }
@@ -281,7 +313,7 @@ Resources:
     DependsOn: TelemetryRuleFunctionLogGroup
     Properties:
       FunctionName: agentcore-telemetry-rule-handler
-      Description: Custom-resource handler for AgentCore telemetry rules (Gateway, Memory, WorkloadIdentity)
+      Description: Custom-resource handler for AgentCore telemetry rules (Gateway, Memory, WorkloadIdentity, PaymentManager)
       Runtime: python3.13
       Handler: index.handler
       Timeout: 120
@@ -293,9 +325,10 @@ Resources:
           """Custom resource handler for AgentCore telemetry enablement rules.
 
           Creates, updates, and deletes CloudWatch ObservabilityAdmin telemetry
-          rules for Bedrock AgentCore resource types that are not yet supported
-          natively by CloudFormation (Gateway, Memory, WorkloadIdentity). The
-          handler runs in, and acts on, the region the stack is deployed to.
+          rules for the Bedrock AgentCore resource types this stack manages
+          through a custom resource (Gateway, Memory, WorkloadIdentity,
+          PaymentManager). The handler runs in, and acts on, the region the
+          stack is deployed to.
 
           The cfnresponse module is injected automatically by AWS Lambda because
           this code is embedded in the template through the ZipFile property.
@@ -413,6 +446,7 @@ Resources:
                   - !Sub arn:${AWS::Partition}:observabilityadmin:${AWS::Region}:${AWS::AccountId}:telemetry-rule/agentcore-gateway-*
                   - !Sub arn:${AWS::Partition}:observabilityadmin:${AWS::Region}:${AWS::AccountId}:telemetry-rule/agentcore-memory-*
                   - !Sub arn:${AWS::Partition}:observabilityadmin:${AWS::Region}:${AWS::AccountId}:telemetry-rule/agentcore-workloadidentity-*
+                  - !Sub arn:${AWS::Partition}:observabilityadmin:${AWS::Region}:${AWS::AccountId}:telemetry-rule/agentcore-paymentmanager-*
               - Sid: TelemetryCreatePreconditions
                 Effect: Allow
                 Action:
@@ -529,6 +563,39 @@ Resources:
       RuleName: agentcore-workloadidentity-traces
       Rule:
         ResourceType: AWS::BedrockAgentCore::WorkloadIdentity
+        TelemetryType: Traces
+        Regions:
+          - !Ref "AWS::Region"
+
+
+  TelemetryRulePaymentManagerApplicationLogs:
+    Type: Custom::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: PaymentManagerEnabled
+    Properties:
+      ServiceToken: !GetAtt TelemetryRuleFunction.Arn
+      RuleName: agentcore-paymentmanager-application-logs
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::PaymentManager
+        TelemetryType: Logs
+        Regions:
+          - !Ref "AWS::Region"
+        DestinationConfiguration:
+          DestinationType: cloud-watch-logs
+          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
+          LogDeliveryParameters:
+            LogTypes:
+              - APPLICATION_LOGS
+
+  TelemetryRulePaymentManagerTraces:
+    Type: Custom::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: PaymentManagerEnabled
+    Properties:
+      ServiceToken: !GetAtt TelemetryRuleFunction.Arn
+      RuleName: agentcore-paymentmanager-traces
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::PaymentManager
         TelemetryType: Traces
         Regions:
           - !Ref "AWS::Region"
