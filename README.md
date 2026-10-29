@@ -171,6 +171,31 @@ aws cloudformation validate-template --template-body file://bedrock-agentcore-te
 aws observabilityadmin list-telemetry-rules --region <your-region>
 ```
 
+The rules create deliveries for matching resources automatically. Log
+deliveries usually appear within a few minutes. Trace deliveries for the
+AWS-provided Browser and CodeInterpreter can take longer, so wait several
+minutes before you conclude that traces are not being delivered.
+
+### Upgrading a stack deployed from an earlier version
+
+Earlier versions of this template created separate application-log and
+usage-log rules for Runtime. CloudWatch allows only one Logs rule for each
+resource type and destination, so this version uses a single rule that
+requests both log types. An in-place stack update from an earlier version
+fails, because the new combined rule conflicts with the old rule that is still
+present during the update.
+
+To upgrade, delete the existing stack and then deploy this version. Deleting
+the stack does not remove existing deliveries, so telemetry that is already
+flowing keeps flowing while you redeploy.
+
+```bash
+aws cloudformation delete-stack --stack-name bedrock-agentcore-telemetry-enablement --region <your-region>
+aws cloudformation wait stack-delete-complete --stack-name bedrock-agentcore-telemetry-enablement --region <your-region>
+```
+
+Then run the deploy command above.
+
 ## Teardown and cleanup
 
 Turning telemetry off is not the reverse of turning it on. Deleting a rule,

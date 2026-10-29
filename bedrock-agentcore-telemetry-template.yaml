@@ -93,23 +93,6 @@ Resources:
           LogDeliveryParameters:
             LogTypes:
               - APPLICATION_LOGS
-
-  TelemetryRuleRuntimeUsageLogs:
-    Type: AWS::ObservabilityAdmin::TelemetryRule
-    DependsOn: AgentCoreXRayResourcePolicy
-    Condition: RuntimeEnabled
-    Properties:
-      RuleName: agentcore-runtime-usage-logs
-      Rule:
-        ResourceType: AWS::BedrockAgentCore::Runtime
-        TelemetryType: Logs
-        Regions:
-          - !Ref "AWS::Region"
-        DestinationConfiguration:
-          DestinationType: cloud-watch-logs
-          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
-          LogDeliveryParameters:
-            LogTypes:
               - USAGE_LOGS
 
   TelemetryRuleRuntimeTraces:
@@ -156,24 +139,6 @@ Resources:
           - !Ref "AWS::Region"
 
 
-  TelemetryRuleCodeInterpreterApplicationLogs:
-    Type: AWS::ObservabilityAdmin::TelemetryRule
-    DependsOn: AgentCoreXRayResourcePolicy
-    Condition: CodeInterpreterEnabled
-    Properties:
-      RuleName: agentcore-codeinterpreter-application-logs
-      Rule:
-        ResourceType: AWS::BedrockAgentCore::CodeInterpreter
-        TelemetryType: Logs
-        Regions:
-          - !Ref "AWS::Region"
-        DestinationConfiguration:
-          DestinationType: cloud-watch-logs
-          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
-          LogDeliveryParameters:
-            LogTypes:
-              - APPLICATION_LOGS
-
   TelemetryRuleCodeInterpreterUsageLogs:
     Type: AWS::ObservabilityAdmin::TelemetryRule
     DependsOn: AgentCoreXRayResourcePolicy
@@ -190,6 +155,7 @@ Resources:
           DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
           LogDeliveryParameters:
             LogTypes:
+              - APPLICATION_LOGS
               - USAGE_LOGS
 
   TelemetryRuleCodeInterpreterTraces:
