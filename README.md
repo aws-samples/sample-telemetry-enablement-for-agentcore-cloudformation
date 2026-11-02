@@ -72,9 +72,10 @@ Two delivery paths are used.
 Gateway, Memory, WorkloadIdentity, and PaymentManager are created through an
 inline Python Lambda that calls the `observabilityadmin` API and signals
 CloudFormation using the official `cfnresponse` module. PaymentManager is not
-yet in the CloudFormation schema. Gateway, Memory, and WorkloadIdentity are now
-supported natively by `AWS::ObservabilityAdmin::TelemetryRule` but still use the
-custom resource in this template. Create must succeed for every enabled rule; any error
+yet in the CloudFormation schema in every region. Gateway, Memory, and
+WorkloadIdentity are now supported natively by
+`AWS::ObservabilityAdmin::TelemetryRule` but still use the custom resource in
+this template. Create must succeed for every enabled rule; any error
 (including a conflict with an existing rule) is reported as a failure so the
 stack surfaces it. On delete, a rule that is already gone is treated as success.
 If a create fails because a rule with the same name already exists, the
@@ -96,7 +97,7 @@ code that CodeInterpreter runs.
 | Gateway | The request and response bodies of MCP calls, including tool names, tool arguments, and tool results. |
 | WorkloadIdentity | The request and response payloads of Identity operations such as `GetWorkloadAccessToken`. Responses from these operations return access tokens. Treat these logs as credential-bearing unless you have confirmed the tokens are not recorded. |
 | Memory | Extraction and consolidation processing events with actor, session, and namespace identifiers. AWS documentation does not list payload fields. |
-| PaymentManager | Events for each payments data plane call. AWS documentation states that these logs record who made the payment, what was paid for, the amount, and the recipient. |
+| PaymentManager | Events for each payments data plane call. AWS documentation states that these logs record who made the payment, what was paid for, the amount, and the recipient. Treat these logs as containing personal and financial data, and confirm the content meets your privacy and compliance requirements before you enable PaymentManager telemetry. |
 | Browser | Not applicable. This template enables only usage logs and traces for Browser, which do not contain request content. |
 
 The rules apply to all current and future resources of each enabled type in
@@ -109,7 +110,11 @@ each destination log group.
 - Retention. The log groups that the rules create never expire by default, and
   a new log group is created for each new resource, so set retention on each
   one as it appears.
-- Encryption at rest, for example a customer-managed KMS key.
+- Encryption key. Logs and traces are encrypted at rest by default with AWS
+  managed keys. For sensitive content, such as WorkloadIdentity tokens or
+  PaymentManager payment details, consider a customer-managed KMS key, which
+  gives you control over who can decrypt the data. A key is associated per log
+  group, so apply it to each new log group as it appears.
 
 If payload capture is not acceptable for a resource type, set its
 `Enable*Telemetry` parameter to `false` before deploying.
