@@ -1,15 +1,12 @@
 # Enable Amazon Bedrock AgentCore Observability with CloudFormation
 
 Deploy a single CloudFormation stack to turn on CloudWatch logs and X-Ray traces
-for every Amazon Bedrock AgentCore resource type: Runtime, Gateway, Memory,
-Browser, CodeInterpreter, and WorkloadIdentity.
+for Amazon Bedrock AgentCore resources: Runtime, Gateway, Memory, Browser,
+CodeInterpreter, WorkloadIdentity, and PaymentManager (off by default).
 
-Uses `AWS::ObservabilityAdmin::TelemetryRule` where the CloudFormation schema
-supports it, and the `observabilityadmin` API through a Lambda custom resource
-where it does not.
-
-This CloudFormation template turns on CloudWatch Observability telemetry
-(logs and traces) for Amazon Bedrock AgentCore resources.
+Runtime, Browser, and CodeInterpreter use `AWS::ObservabilityAdmin::TelemetryRule`.
+Gateway, Memory, WorkloadIdentity, and PaymentManager use the `observabilityadmin`
+API through a Lambda custom resource.
 
 ## Prerequisites
 
