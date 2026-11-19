@@ -27,6 +27,7 @@ Metadata:
           - EnableGatewayTelemetry
           - EnableMemoryTelemetry
           - EnableWorkloadIdentityTelemetry
+          - EnablePaymentManagerTelemetry
 
 Parameters:
   EnableRuntimeTelemetry:
@@ -59,6 +60,11 @@ Parameters:
     AllowedValues: ["true", "false"]
     Default: "true"
     Description: Create logging and tracing telemetry rules for Bedrock AgentCore WorkloadIdentity resources.
+  EnablePaymentManagerTelemetry:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+    Description: Create logging and tracing telemetry rules for Bedrock AgentCore PaymentManager resources. Set to true only in Regions where AgentCore payments is available, otherwise the deployment fails.
 
 Conditions:
   RuntimeEnabled: !Equals [!Ref EnableRuntimeTelemetry, "true"]
@@ -67,6 +73,7 @@ Conditions:
   GatewayEnabled: !Equals [!Ref EnableGatewayTelemetry, "true"]
   MemoryEnabled: !Equals [!Ref EnableMemoryTelemetry, "true"]
   WorkloadIdentityEnabled: !Equals [!Ref EnableWorkloadIdentityTelemetry, "true"]
+  PaymentManagerEnabled: !Equals [!Ref EnablePaymentManagerTelemetry, "true"]
   AnyTelemetryEnabled: !Or
     - !Condition RuntimeEnabled
     - !Condition BrowserEnabled
@@ -74,6 +81,7 @@ Conditions:
     - !Condition GatewayEnabled
     - !Condition MemoryEnabled
     - !Condition WorkloadIdentityEnabled
+    - !Condition PaymentManagerEnabled
 
 Resources:
   TelemetryRuleRuntimeApplicationLogs:
@@ -93,23 +101,6 @@ Resources:
           LogDeliveryParameters:
             LogTypes:
               - APPLICATION_LOGS
-
-  TelemetryRuleRuntimeUsageLogs:
-    Type: AWS::ObservabilityAdmin::TelemetryRule
-    DependsOn: AgentCoreXRayResourcePolicy
-    Condition: RuntimeEnabled
-    Properties:
-      RuleName: agentcore-runtime-usage-logs
-      Rule:
-        ResourceType: AWS::BedrockAgentCore::Runtime
-        TelemetryType: Logs
-        Regions:
-          - !Ref "AWS::Region"
-        DestinationConfiguration:
-          DestinationType: cloud-watch-logs
-          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
-          LogDeliveryParameters:
-            LogTypes:
               - USAGE_LOGS
 
   TelemetryRuleRuntimeTraces:
@@ -172,6 +163,7 @@ Resources:
           DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
           LogDeliveryParameters:
             LogTypes:
+              - APPLICATION_LOGS
               - USAGE_LOGS
 
   TelemetryRuleCodeInterpreterTraces:
@@ -279,16 +271,49 @@ Resources:
                 "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:gateway/*" },
                 "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
               }
+            },
+            {
+              "Sid": "AWSLogDeliveryWriteBrowserCustom",
+              "Effect": "Allow",
+              "Principal": { "Service": "delivery.logs.amazonaws.com" },
+              "Action": "xray:PutTraceSegments",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": { "aws:SourceAccount": "${AWS::AccountId}" },
+                "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:browser-custom/*" },
+                "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
+              }
+            },
+            {
+              "Sid": "AWSLogDeliveryWritePaymentManager",
+              "Effect": "Allow",
+              "Principal": { "Service": "delivery.logs.amazonaws.com" },
+              "Action": "xray:PutTraceSegments",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": { "aws:SourceAccount": "${AWS::AccountId}" },
+                "ForAllValues:ArnLike": { "logs:LogGeneratingResourceArns": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:payment-manager/*" },
+                "ArnLike": { "aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:delivery-source:*" }
+              }
             }
           ]
         }
 
 
+  TelemetryRuleFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: /aws/lambda/agentcore-telemetry-rule-handler
+      RetentionInDays: 30
+
   TelemetryRuleFunction:
     Type: AWS::Lambda::Function
+    DependsOn: TelemetryRuleFunctionLogGroup
     Properties:
       FunctionName: agentcore-telemetry-rule-handler
-      Description: Custom-resource handler for AgentCore telemetry rules (Gateway, Memory, WorkloadIdentity)
+      Description: Custom-resource handler for AgentCore telemetry rules (Gateway, Memory, WorkloadIdentity, PaymentManager)
       Runtime: python3.13
       Handler: index.handler
       Timeout: 120
@@ -300,9 +325,10 @@ Resources:
           """Custom resource handler for AgentCore telemetry enablement rules.
 
           Creates, updates, and deletes CloudWatch ObservabilityAdmin telemetry
-          rules for Bedrock AgentCore resource types that are not yet supported
-          natively by CloudFormation (Gateway, Memory, WorkloadIdentity). The
-          handler runs in, and acts on, the region the stack is deployed to.
+          rules for the Bedrock AgentCore resource types this stack manages
+          through a custom resource (Gateway, Memory, WorkloadIdentity,
+          PaymentManager). The handler runs in, and acts on, the region the
+          stack is deployed to.
 
           The cfnresponse module is injected automatically by AWS Lambda because
           this code is embedded in the template through the ZipFile property.
@@ -328,12 +354,21 @@ Resources:
                       raise
 
 
+          # Physical ID for a failed Create, so rollback never deletes an existing rule.
+          FAILED_CREATE_PREFIX = "create-failed-"
+
+
           def handler(event, context):
               """Dispatch the CloudFormation custom resource request."""
               properties = event.get("ResourceProperties", {})
               rule_name = properties.get("RuleName")
-              physical_resource_id = rule_name or event.get("PhysicalResourceId", "none")
               request_type = event["RequestType"]
+              if request_type == "Create":
+                  physical_resource_id = rule_name
+                  failure_resource_id = FAILED_CREATE_PREFIX + event["RequestId"]
+              else:
+                  physical_resource_id = event.get("PhysicalResourceId", rule_name or "none")
+                  failure_resource_id = physical_resource_id
               finished = threading.Event()
 
               def send_timeout_failure():
@@ -341,7 +376,7 @@ Resources:
                   operation does not hang waiting on the custom resource."""
                   if not finished.is_set():
                       cfnresponse.send(event, context, cfnresponse.FAILED, {},
-                                       physical_resource_id,
+                                       failure_resource_id,
                                        reason="Function timed out")
 
               seconds_remaining = context.get_remaining_time_in_millis() / 1000.0
@@ -362,6 +397,11 @@ Resources:
                       cfnresponse.send(event, context, cfnresponse.SUCCESS, {},
                                        physical_resource_id)
                   elif request_type == "Delete":
+                      if physical_resource_id.startswith(FAILED_CREATE_PREFIX):
+                          # This stack never created the rule, so there is nothing to delete.
+                          cfnresponse.send(event, context, cfnresponse.SUCCESS, {},
+                                           physical_resource_id)
+                          return
                       # An already-deleted rule is treated as success in
                       # delete_rule. Any other delete error propagates and is
                       # signaled FAILED so the rule is not silently orphaned.
@@ -372,11 +412,11 @@ Resources:
                                        physical_resource_id)
                   else:
                       cfnresponse.send(event, context, cfnresponse.FAILED, {},
-                                       physical_resource_id,
+                                       failure_resource_id,
                                        reason="Unknown RequestType " + request_type)
               except Exception as error:
                   cfnresponse.send(event, context, cfnresponse.FAILED, {},
-                                   physical_resource_id, reason=str(error)[:900])
+                                   failure_resource_id, reason=str(error)[:900])
               finally:
                   finished.set()
                   timeout_guard.cancel()
@@ -406,6 +446,7 @@ Resources:
                   - !Sub arn:${AWS::Partition}:observabilityadmin:${AWS::Region}:${AWS::AccountId}:telemetry-rule/agentcore-gateway-*
                   - !Sub arn:${AWS::Partition}:observabilityadmin:${AWS::Region}:${AWS::AccountId}:telemetry-rule/agentcore-memory-*
                   - !Sub arn:${AWS::Partition}:observabilityadmin:${AWS::Region}:${AWS::AccountId}:telemetry-rule/agentcore-workloadidentity-*
+                  - !Sub arn:${AWS::Partition}:observabilityadmin:${AWS::Region}:${AWS::AccountId}:telemetry-rule/agentcore-paymentmanager-*
               - Sid: TelemetryCreatePreconditions
                 Effect: Allow
                 Action:
@@ -522,6 +563,39 @@ Resources:
       RuleName: agentcore-workloadidentity-traces
       Rule:
         ResourceType: AWS::BedrockAgentCore::WorkloadIdentity
+        TelemetryType: Traces
+        Regions:
+          - !Ref "AWS::Region"
+
+
+  TelemetryRulePaymentManagerApplicationLogs:
+    Type: Custom::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: PaymentManagerEnabled
+    Properties:
+      ServiceToken: !GetAtt TelemetryRuleFunction.Arn
+      RuleName: agentcore-paymentmanager-application-logs
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::PaymentManager
+        TelemetryType: Logs
+        Regions:
+          - !Ref "AWS::Region"
+        DestinationConfiguration:
+          DestinationType: cloud-watch-logs
+          DestinationPattern: /aws/bedrock-agentcore/<resourceId>/<logType>
+          LogDeliveryParameters:
+            LogTypes:
+              - APPLICATION_LOGS
+
+  TelemetryRulePaymentManagerTraces:
+    Type: Custom::TelemetryRule
+    DependsOn: AgentCoreXRayResourcePolicy
+    Condition: PaymentManagerEnabled
+    Properties:
+      ServiceToken: !GetAtt TelemetryRuleFunction.Arn
+      RuleName: agentcore-paymentmanager-traces
+      Rule:
+        ResourceType: AWS::BedrockAgentCore::PaymentManager
         TelemetryType: Traces
         Regions:
           - !Ref "AWS::Region"
